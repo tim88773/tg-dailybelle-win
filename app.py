@@ -23,7 +23,7 @@ if 'f_rsn' not in st.session_state: st.session_state['f_rsn'] = 20.0
 if 'f_tags' not in st.session_state: st.session_state['f_tags'] = []
 if 'f_attr' not in st.session_state: st.session_state['f_attr'] = "不確定胸型" # 紀錄自動比對到的胸型
 if 'run_report' not in st.session_state: st.session_state['run_report'] = False
-if 'f_icon_url' not in st.session_state: st.session_state['f_icon_url'] = "" # ⭐ 新增：紀錄圖片網址
+if 'f_icon_url' not in st.session_state: st.session_state['f_icon_url'] = "" # 紀錄圖片網址
 
 # TG3D API 設定
 APIKEY = st.secrets.get("APIKEY", "請在secrets設定APIKEY")
@@ -176,7 +176,7 @@ with st.sidebar:
                                 time.sleep(0.5)
                                 m_a = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=A', timeout=10).json().get('measurement', {})
                                 
-                                # ⭐ 新增：抓取詳細紀錄取得圖片 (icon_url)
+                                # 抓取詳細紀錄取得圖片 (icon_url)
                                 try:
                                     record_detail = requests.get(f'{BASE_URL}/scan_records/{tid}?apikey={APIKEY}', timeout=10).json()
                                     st.session_state['f_icon_url'] = record_detail.get('icon_url', '')
@@ -212,47 +212,23 @@ with st.sidebar:
 
 st.divider()
 
-# --- 🎯 介面排版：左側輸入區(3)，右側圖片區(1) ---
-col_input, col_img = st.columns([3, 1])
+# --- 回復成原本滿版的輸入排版 ---
+st.header("👤 顧客資訊")
+user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
+user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
 
-with col_input:
-    st.header("👤 顧客資訊")
-    user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
-    user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
+st.header("📏 數據測量")
+upper_chest = st.number_input("上胸圍 (cm)", 50.0, 150.0, float(st.session_state['f_upper']), 0.1)
+lower_chest = st.number_input("下胸圍 (cm)", 40.0, 120.0, float(st.session_state['f_lower']), 0.1)
+left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
+right_shoulder_nipple = st.number_input("頸肩-乳尖公分數(右) (cm)", 10.0, 50.0, float(st.session_state['f_rsn']), 0.1)
 
-    st.header("📏 數據測量")
-    upper_chest = st.number_input("上胸圍 (cm)", 50.0, 150.0, float(st.session_state['f_upper']), 0.1)
-    lower_chest = st.number_input("下胸圍 (cm)", 40.0, 120.0, float(st.session_state['f_lower']), 0.1)
-    left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
-    right_shoulder_nipple = st.number_input("頸肩-乳尖公分數(右) (cm)", 10.0, 50.0, float(st.session_state['f_rsn']), 0.1)
-    
-    st.header("🔎 胸型屬性")
-    # 讀取 Session 裡面的胸型，設定為預設選項
-    default_attr_index = ATTR_OPTIONS.index(st.session_state['f_attr']) if st.session_state['f_attr'] in ATTR_OPTIONS else 0
-    selected_attr = st.selectbox("選擇顧客胸型", options=ATTR_OPTIONS, index=default_attr_index)
-    
-    if st.button("✨ 手動生成報告", use_container_width=True):
-        st.session_state['run_report'] = True
+st.header("🔎 胸型屬性")
+default_attr_index = ATTR_OPTIONS.index(st.session_state['f_attr']) if st.session_state['f_attr'] in ATTR_OPTIONS else 0
+selected_attr = st.selectbox("選擇顧客胸型", options=ATTR_OPTIONS, index=default_attr_index)
 
-with col_img:
-    st.header("🖼️ 體態預覽")
-    icon_url = st.session_state.get('f_icon_url', '')
-    if icon_url:
-        st.image(icon_url, use_container_width=True)
-        try:
-            # 製作下載圖片按鈕
-            img_content = requests.get(icon_url).content
-            st.download_button(
-                label="💾 下載正面圖",
-                data=img_content,
-                file_name=f"{st.session_state['f_name'] or 'customer'}_front.jpg",
-                mime="image/jpeg",
-                use_container_width=True
-            )
-        except:
-            st.caption("暫時無法提供下載")
-    else:
-        st.info("ℹ️ 尚未載入數據或無圖片")
+if st.button("✨ 手動生成報告", use_container_width=True):
+    st.session_state['run_report'] = True
 
 # --- 5. 主要運算邏輯 ---
 st.title("𝒟𝒶𝒾𝓁𝓎𝒷𝑒𝓁𝓁𝑒 專業尺寸建議系統")
@@ -279,11 +255,10 @@ if size_table is not None and product_mapping is not None:
         if not matches.empty:
             st.success(f"✅ 計算完成！根據上胸圍 **{upper_chest}** cm / 下胸圍 **{lower_chest}** cm 為您推薦以下尺寸：")
             
-            # ⭐ 標籤改回黑底純文字格式，並使用逗號分隔
             if st.session_state['f_tags']:
                 tags_text = "、".join(st.session_state['f_tags'])
                 st.markdown(f"#### 📌 雲端判定標籤： **{tags_text}**")
-                st.write("") # 空行排版
+                st.write("") 
             
             email_body = f"【黛莉貝爾建議報表】\n"
             if user_name: email_body += f"親愛的 {user_name} 您好：\n\n"
@@ -311,6 +286,29 @@ if size_table is not None and product_mapping is not None:
                             display_text = f"[**{p}**]({url})" if url else f"**{p}**"
                             cols[idx % 4].markdown(f"{display_text}\n\n尺寸：{size_label}")
             
+            # ⭐ 將體態圖放到最後一個推薦款式下方
+            st.markdown("---")
+            st.subheader("🖼️ 顧客體態預覽")
+            icon_url = st.session_state.get('f_icon_url', '')
+            if icon_url:
+                # 使用 1:2 的比例，讓圖片維持在適當的大小，不會因為滿版被放大到失真
+                img_col, _ = st.columns([1, 2])
+                with img_col:
+                    st.image(icon_url, use_container_width=True)
+                    try:
+                        img_content = requests.get(icon_url).content
+                        st.download_button(
+                            label="💾 下載正面圖",
+                            data=img_content,
+                            file_name=f"{st.session_state['f_name'] or 'customer'}_front.jpg",
+                            mime="image/jpeg",
+                            use_container_width=True
+                        )
+                    except:
+                        st.caption("暫時無法提供下載")
+            else:
+                st.info("ℹ️ 尚未載入數據或無圖片")
+
             save_log_to_gsheets(user_name, user_email, upper_chest, lower_chest, left_shoulder_nipple, right_shoulder_nipple, selected_attr, log_recommend_str)
 
             if user_email:
