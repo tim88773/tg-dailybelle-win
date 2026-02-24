@@ -10,13 +10,24 @@ APIKEY = st.secrets["APIKEY"]
 BASE_URL = 'https://api.tg3ds.com/api/v1'
 SHAPE_TAGS = {'Rectangle', 'Inverted Triangle', 'Triangle', 'Hourglass', 'Top Hourglass', 'Oval'}
 
-# 輔助函式：安全取得數值
+# 輔助函式：安全取得數值並四捨五入到小數點第二位
 def get_val(data, key):
     if not data: return '無資料'
     item = data.get(key)
+    
+    # 判斷是否為 dict 結構並取出 value
+    val = '無資料'
     if isinstance(item, dict):
-        return item.get('value', '無資料')
-    return item if item is not None else '無資料'
+        val = item.get('value', '無資料')
+    elif item is not None:
+        val = item
+
+    # 嘗試將數值格式化為小數點後兩位
+    try:
+        return f"{float(val):.2f}"
+    except (ValueError, TypeError):
+        # 如果不是數字 (例如回傳純文字或無法轉換的格式)，就回傳原始內容
+        return val
 
 # ==========================================
 # 2. Streamlit 網頁介面設計
@@ -100,12 +111,10 @@ if search_clicked:
                             # --- 顯示量測數據 (使用 Metric 排版) ---
                             st.subheader("📏 量測數據結果")
                             
-                            
                             i_col1, i_col2 = st.columns(2)
-                            i_col1.metric("胸圍", get_val(measurements['I'], 'Chest Circumference'))
-                            i_col2.metric("胸下圍", get_val(measurements['I'], 'F Under Bust Circumference B'))
+                            i_col1.metric("上胸圍", get_val(measurements['I'], 'Chest Circumference'))
+                            i_col2.metric("下胸圍", get_val(measurements['I'], 'F Under Bust Circumference B'))
 
-                            
                             a_col1, a_col2, a_col3 = st.columns(3)
                             a_col1.metric("左乳尖長", get_val(measurements['A'], 'NSP to Apex Length (Left)'))
                             a_col2.metric("右乳尖長", get_val(measurements['A'], 'NSP to Apex Length (Right)'))
@@ -122,4 +131,4 @@ if search_clicked:
                     st.error(f"❌ 找不到關鍵字「{search_keyword}」的紀錄。請確認帳號是否正確，或該帳號是否在最新的 20 筆紀錄中。")
 
             except Exception as e:
-                st.error(f"❌ 連線或解析時發生錯誤: {e}")
+                st.error(f"❌ 連線或解析時發生錯誤:
