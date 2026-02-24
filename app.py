@@ -214,8 +214,6 @@ with st.sidebar:
     left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
     right_shoulder_nipple = st.number_input("頸肩-乳尖公分數(右) (cm)", 10.0, 50.0, float(st.session_state['f_rsn']), 0.1)
     
-    special_adjust = st.toggle("🛠️ 開啟特殊調整", help="選取「成熟承托型」時，上胸圍自動 +3cm 計算")
-    
     st.header("🔎 胸型屬性")
     # 讀取 Session 裡面的胸型，設定為預設選項
     default_attr_index = ATTR_OPTIONS.index(st.session_state['f_attr']) if st.session_state['f_attr'] in ATTR_OPTIONS else 0
@@ -240,10 +238,9 @@ url_dict = pd.Series(url_df.官網連結.values, index=url_df.款式號碼.astyp
 if size_table is not None and product_mapping is not None:
     if st.session_state.get('run_report', False):
         close_sidebar()
-        calc_upper = upper_chest + 3.0 if (special_adjust and selected_attr == "成熟承托型") else upper_chest
         
         matches = size_table[
-            (size_table['上胸圍1'] <= calc_upper) & (size_table['上胸圍2'] >= calc_upper) &
+            (size_table['上胸圍1'] <= upper_chest) & (size_table['上胸圍2'] >= upper_chest) &
             (size_table['下胸圍1'] <= lower_chest) & (size_table['下胸圍2'] >= lower_chest)
         ]
         
