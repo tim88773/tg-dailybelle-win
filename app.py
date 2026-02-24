@@ -21,9 +21,9 @@ if 'f_lower' not in st.session_state: st.session_state['f_lower'] = 65.0
 if 'f_lsn' not in st.session_state: st.session_state['f_lsn'] = 20.0
 if 'f_rsn' not in st.session_state: st.session_state['f_rsn'] = 20.0
 if 'f_tags' not in st.session_state: st.session_state['f_tags'] = []
-if 'f_attr' not in st.session_state: st.session_state['f_attr'] = "不確定胸型" # 紀錄自動比對到的胸型
+if 'f_attr' not in st.session_state: st.session_state['f_attr'] = "不確定胸型" 
 if 'run_report' not in st.session_state: st.session_state['run_report'] = False
-if 'f_icon_url' not in st.session_state: st.session_state['f_icon_url'] = "" # 紀錄圖片網址
+if 'f_icon_url' not in st.session_state: st.session_state['f_icon_url'] = "" 
 
 # TG3D API 設定
 APIKEY = st.secrets.get("APIKEY", "請在secrets設定APIKEY")
@@ -123,8 +123,23 @@ st.markdown("""
     .stApp, .stApp p, .stApp span, .stApp label, .stApp div { color: #211919 !important; }
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #000000 !important; font-weight: bold; }
     h1, h2, h3 { color: #211919 !important; font-family: "Microsoft JhengHei", sans-serif !important; }
+    
+    /* 側邊欄一般按鈕樣式 (粉色底白字) */
     .stButton>button { background-color: #d6a4a4 !important; color: #ffffff !important; border-radius: 20px !important; border: none !important; }
     .stButton>button:hover { background-color: #c58e8e !important; color: white !important; }
+    
+    /* ⭐ 專屬針對「下載按鈕」的樣式 (透明底黑字黑框) */
+    [data-testid="stDownloadButton"] button {
+        background-color: transparent !important; 
+        color: #000000 !important; 
+        border: 1px solid #000000 !important;
+        border-radius: 20px !important;
+    }
+    [data-testid="stDownloadButton"] button:hover {
+        background-color: #f0f0f0 !important; 
+        color: #000000 !important;
+    }
+    
     input[type="number"], input[type="text"], [data-baseweb="select"] div, [data-baseweb="base-input"] { background-color: #ffffff !important; color: #000000 !important; -webkit-text-fill-color: #000000 !important; }
     [data-testid="stExpander"] { background-color: #ffffff !important; border: 1px solid #d6a4a4 !important; border-radius: 10px !important; overflow: hidden; }
     [data-testid="stExpander"] details summary { background-color: #ffffff !important; color: #211919 !important; }
@@ -212,7 +227,6 @@ with st.sidebar:
 
     st.divider()
 
-    # --- 以下皆移回左側邊欄 ---
     st.header("👤 顧客資訊")
     user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
     user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
@@ -286,17 +300,17 @@ if size_table is not None and product_mapping is not None:
                             display_text = f"[**{p}**]({url})" if url else f"**{p}**"
                             cols[idx % 4].markdown(f"{display_text}\n\n尺寸：{size_label}")
             
-            # ⭐ 體態圖放置於主畫面最下方 (最後一個推薦款式之後)
+            # ⭐ 體態圖與下載按鈕
             st.markdown("---")
             st.subheader("🖼️ 顧客體態預覽")
             icon_url = st.session_state.get('f_icon_url', '')
             if icon_url:
-                # 依然使用 1:2 比例，避免主畫面全寬時圖片被拉太大
                 img_col, _ = st.columns([1, 2])
                 with img_col:
                     st.image(icon_url, use_container_width=True)
                     try:
                         img_content = requests.get(icon_url).content
+                        # 這裡的下載按鈕會自動套用我們上面寫的 CSS (透明底黑字)
                         st.download_button(
                             label="💾 下載正面圖",
                             data=img_content,
