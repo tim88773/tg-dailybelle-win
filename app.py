@@ -214,7 +214,7 @@ with st.sidebar:
     left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
     right_shoulder_nipple = st.number_input("頸肩-乳尖公分數(右) (cm)", 10.0, 50.0, float(st.session_state['f_rsn']), 0.1)
     
-
+    special_adjust = st.toggle("🛠️ 開啟特殊調整", help="選取「成熟承托型」時，上胸圍自動 +3cm 計算")
     
     st.header("🔎 胸型屬性")
     # 讀取 Session 裡面的胸型，設定為預設選項
