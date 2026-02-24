@@ -14,29 +14,30 @@ from datetime import datetime
 # --- 1. 初始化設定 ---
 st.set_page_config(page_title="黛莉貝爾智能美體系統", layout="wide")
 
-# 初始化 session_state (用來儲存 API 抓回來的數據，讓輸入框自動更新)
+# 初始化 session_state
 if 'f_name' not in st.session_state: st.session_state['f_name'] = ""
 if 'f_upper' not in st.session_state: st.session_state['f_upper'] = 82.0
 if 'f_lower' not in st.session_state: st.session_state['f_lower'] = 65.0
 if 'f_lsn' not in st.session_state: st.session_state['f_lsn'] = 20.0
 if 'f_rsn' not in st.session_state: st.session_state['f_rsn'] = 20.0
+if 'f_tags' not in st.session_state: st.session_state['f_tags'] = []
+if 'run_report' not in st.session_state: st.session_state['run_report'] = False # 自動生成報告的開關
 
 # TG3D API 設定
 APIKEY = st.secrets.get("APIKEY", "請在secrets設定APIKEY")
 BASE_URL = 'https://api.tg3ds.com/api/v1'
+SHAPE_TAGS = {'Rectangle', 'Inverted Triangle', 'Triangle', 'Hourglass', 'Top Hourglass', 'Oval'}
 
 # --- 2. 核心功能函數 ---
 
 @st.cache_data
 def load_csv_data(file_name):
     """強化除錯版的 CSV 讀取功能"""
-    # 1. 檢查檔案是否真的存在於目前執行的路徑中
     if not os.path.exists(file_name):
         current_path = os.path.abspath(os.getcwd())
         st.error(f"📂 **路徑錯誤**：系統目前在資料夾「`{current_path}`」中找不到檔案 `{file_name}`。請確認終端機的執行路徑是否正確。")
         return None
         
-    # 2. 嘗試使用不同編碼讀取
     last_error = ""
     for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
         try:
@@ -48,10 +49,8 @@ def load_csv_data(file_name):
             last_error = str(e)
             continue
             
-    # 3. 如果檔案存在，但全部編碼都讀取失敗
     st.error(f"⚠️ **格式錯誤**：讀取 `{file_name}` 失敗！檔案確實存在，但格式或編碼無法解析。\n\n**系統錯誤細節：** {last_error}")
     return None
-
 
 def close_sidebar():
     components.html(
@@ -99,11 +98,10 @@ def save_log_to_gsheets(name, email, upper, lower, left_sn, right_sn, attr, reco
             upper, lower, left_sn, right_sn, attr, recommended_info
         ]
         worksheet.append_row(row_data)
-        st.success("📊 太棒了！背景數據已成功寫入 Google 試算表！")
+        st.success("📊 數據已成功寫入雲端紀錄！")
     except Exception as e:
-        st.error(f"⚠️ 寫入 Google Sheets 失敗！\n\n系統回報的真實錯誤是： {e}")
+        st.error(f"⚠️ 寫入 Google Sheets 失敗： {e}")
 
-# 安全取得 TG3D 數值並轉換為 float
 def get_tg3d_float(data, key, default_val):
     if not data: return default_val
     item = data.get(key)
@@ -130,6 +128,7 @@ st.markdown("""
     [data-testid="stExpander"] details summary:hover { background-color: #fff5f5 !important; }
     [data-testid="stExpander"] details div { background-color: #ffffff !important; color: #211919 !important; }
     [data-testid="stExpander"] p, [data-testid="stExpander"] span { color: #211919 !important; }
+    .custom-tag { background-color: #211919; color: #ffffff !important; padding: 5px 12px; border-radius: 15px; font-size: 16px; margin-right: 8px; display: inline-block; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -139,15 +138,14 @@ with st.sidebar:
     if os.path.exists(logo_path):
         st.image(logo_path, width="stretch") 
     
-    # 🌟 新增：TG3D 雲端數據匯入區塊
     st.header("☁️ 匯入 3D 測量數據")
     search_keyword = st.text_input("輸入 TG3D 帳號或關鍵字", placeholder="例如: 26020865")
     
-    if st.button("⬇️ 載入雲端數據", use_container_width=True):
+    if st.button("⬇️ 載入數據並生成報告", use_container_width=True):
         if not search_keyword.strip():
             st.warning("請先輸入關鍵字！")
         else:
-            with st.spinner("正在連接雲端撈取資料..."):
+            with st.spinner("正在連接雲端撈取資料並分析..."):
                 url_records = f'{BASE_URL}/scan_records?apikey={APIKEY}&limit=20&offset=0'
                 try:
                     resp_records = requests.get(url_records, timeout=10)
@@ -158,6 +156,7 @@ with st.sidebar:
                     for record in records:
                         user_id = record.get('user_id')
                         tid = record.get('tid')
+                        original_tags = record.get('tag_list', [])
                         if not user_id: continue
 
                         resp_user = requests.get(f'{BASE_URL}/users/{user_id}?apikey={APIKEY}', timeout=10)
@@ -169,19 +168,25 @@ with st.sidebar:
                                 found = True
                                 nickname = user_data.get('user', {}).get('nick_name') or user_data.get('nickname') or ''
                                 
-                                # 抓取 I-Pose 與 A-Pose
+                                # 抓取數據
                                 m_i = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=I', timeout=10).json().get('measurement', {})
                                 time.sleep(0.5)
                                 m_a = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=A', timeout=10).json().get('measurement', {})
 
+                                # 處理標籤
+                                cleaned_tags = [t for t in original_tags if t not in SHAPE_TAGS]
+                                final_tags = cleaned_tags + ["(I-Pose Shape)"]
+                                
                                 # 更新到 Session State
                                 st.session_state['f_name'] = nickname
                                 st.session_state['f_upper'] = get_tg3d_float(m_i, 'Chest Circumference', 82.0)
                                 st.session_state['f_lower'] = get_tg3d_float(m_i, 'F Under Bust Circumference B', 65.0)
                                 st.session_state['f_lsn'] = get_tg3d_float(m_a, 'NSP to Apex Length (Left)', 20.0)
                                 st.session_state['f_rsn'] = get_tg3d_float(m_a, 'NSP to Apex Length (Right)', 20.0)
+                                st.session_state['f_tags'] = final_tags
                                 
-                                st.success("✅ 數據匯入成功！已自動填入下方欄位。")
+                                # ⭐ 自動觸發生成報告！
+                                st.session_state['run_report'] = True 
                                 break
                     if not found:
                         st.error("❌ 找不到此帳號的近期紀錄。")
@@ -206,14 +211,16 @@ with st.sidebar:
     attr_options = ["不確定胸型", "秀氣勻稱型", "自然美感型", "成熟承托型", "氣質柔順型", "渾圓美胸型", "柔潤水滴型"]
     selected_attr = st.selectbox("選擇顧客胸型", options=attr_options)
     
-    btn_run = st.button("✨ 生成建議報告", use_container_width=True)
+    # 手動點擊也會觸發生成報告
+    if st.button("✨ 手動生成報告", use_container_width=True):
+        st.session_state['run_report'] = True
 
 # --- 5. 主要運算邏輯 ---
 st.title("𝒟𝒶𝒾𝓁𝓎𝒷𝑒𝓁𝓁𝑒 專業尺寸建議系統")
 
 SELECTED_FILE = "調整尺寸_2.58版.csv"
 
-# 依序讀取檔案（若失敗會顯示上方新增加的錯誤警告）
+# 依序讀取檔案
 size_table = load_csv_data(SELECTED_FILE)
 product_mapping = load_csv_data('商品對應尺寸表.csv')
 breast_attr = load_csv_data('胸型屬性.csv')
@@ -221,9 +228,9 @@ url_df = load_csv_data('款式官網連結.csv')
 
 url_dict = pd.Series(url_df.官網連結.values, index=url_df.款式號碼.astype(str)).to_dict() if url_df is not None else {}
 
-# 若資料庫未完整讀取，不再重複報錯（由 load_csv_data 統一印出）
 if size_table is not None and product_mapping is not None:
-    if btn_run:
+    # 判斷是否需要執行報告 (點擊手動按鈕，或雲端匯入成功時都會是 True)
+    if st.session_state.get('run_report', False):
         close_sidebar()
         calc_upper = upper_chest + 3.0 if (special_adjust and selected_attr == "成熟承托型") else upper_chest
         
@@ -233,15 +240,17 @@ if size_table is not None and product_mapping is not None:
         ]
         
         if not matches.empty:
-            st.success("✅ 已根據最新 2.58 版尺寸標準完成計算")
+            st.success(f"✅ 計算完成！根據上胸圍 **{upper_chest}** cm / 下胸圍 **{lower_chest}** cm 為您推薦以下尺寸：")
+            
+            # ⭐ 新增：將標籤美化並顯示在推薦尺寸的正上方
+            if st.session_state['f_tags']:
+                tags_html = "".join([f"<span class='custom-tag'>{tag}</span>" for tag in st.session_state['f_tags']])
+                st.markdown(f"### 📌 雲端判定身形：<br>{tags_html}", unsafe_allow_html=True)
+                st.write("") # 空行排版
             
             email_body = f"【黛莉貝爾建議報表】\n"
-            if user_name:
-                email_body += f"親愛的 {user_name} 您好：\n\n"
-            email_body += f"測量數據：\n"
-            email_body += f"  - 上胸圍 {upper_chest} cm / 下胸圍 {lower_chest} cm\n"
-            email_body += f"  - 頸肩-乳尖(左) {left_shoulder_nipple} cm / 頸肩-乳尖(右) {right_shoulder_nipple} cm\n"
-            email_body += f"判定屬性：{selected_attr}\n\n"
+            if user_name: email_body += f"親愛的 {user_name} 您好：\n\n"
+            email_body += f"測量數據：\n  - 上胸圍 {upper_chest} cm / 下胸圍 {lower_chest} cm\n  - 頸肩-乳尖(左) {left_shoulder_nipple} cm / 頸肩-乳尖(右) {right_shoulder_nipple} cm\n判定屬性：{selected_attr}\n\n"
             
             attr_products = []
             if selected_attr != "不確定胸型" and breast_attr is not None:
@@ -275,4 +284,4 @@ if size_table is not None and product_mapping is not None:
             st.warning("⚠️ 查無匹配數據，請嘗試手動微調測量值。")
 
 st.markdown("---")
-st.caption("© 黛莉貝爾 Daily Belle - 專業美體系統 V5.1 (2.58版) | 整合雲端 API 版")
+st.caption("© 黛莉貝爾 Daily Belle - 專業美體系統 V5.1 (自動運算版)")
