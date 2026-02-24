@@ -1,140 +1,126 @@
 import streamlit as st
-import pandas as pd
 import requests
 import time
 
-# --- 1. 初始化與 Secrets 讀取 ---
-st.set_page_config(page_title="黛莉貝爾智能量身系統", layout="wide")
+# ==========================================
+# 1. 基本與 API 設定
+# ==========================================
+# 透過 st.secrets 讀取 API Key
+APIKEY = st.secrets["APIKEY"] 
+BASE_URL = 'https://api.tg3ds.com/api/v1'
+SHAPE_TAGS = {'Rectangle', 'Inverted Triangle', 'Triangle', 'Hourglass', 'Top Hourglass', 'Oval'}
 
-# 安全讀取 API Key
-if "TG3D_API_KEY" not in st.secrets:
-    st.error("❌ 找不到 API 金鑰！請在 Streamlit Secrets 中設定 `TG3D_API_KEY`")
-    st.stop()
+# 輔助函式：安全取得數值
+def get_val(data, key):
+    if not data: return '無資料'
+    item = data.get(key)
+    if isinstance(item, dict):
+        return item.get('value', '無資料')
+    return item if item is not None else '無資料'
 
-API_KEY = st.secrets["TG3D_API_KEY"]
-BASE_URL = "https://api.tg3ds.com/api/v1"
-ATTR_KEYWORDS = ['下垂', '外擴', '副乳', '扁平', '雞胸', '不確定胸型']
+# ==========================================
+# 2. Streamlit 網頁介面設計
+# ==========================================
+st.set_page_config(page_title="身形數據查詢系統", page_icon="📏", layout="centered")
 
-# --- 2. 加載 CSV 資料 (請確保檔案在同目錄) ---
-@st.cache_data
-def load_csv():
-    try:
-        df_size = pd.read_csv("Size_Table.csv", encoding='utf-8-sig')
-        df_product = pd.read_csv("Product_List.csv", encoding='utf-8-sig')
-        return df_size, df_product
-    except Exception as e:
-        st.error(f"讀取 CSV 失敗: {e}")
-        return None, None
+st.title("📏 3D 身形數據查詢系統")
+st.markdown("請輸入欲查詢的使用者帳號或關鍵字，系統將自動撈取最新的 I-Pose 與 A-Pose 數據。")
 
-df_size, df_product = load_csv()
+# 建立輸入框與按鈕
+col_input, col_btn = st.columns([3, 1])
+with col_input:
+    search_keyword = st.text_input("SEARCH_KEYWORD", value="26020865", label_visibility="collapsed")
+with col_btn:
+    search_clicked = st.button("🔍 開始查詢", use_container_width=True)
 
-# --- 3. 核心 API 抓取邏輯 ---
-def fetch_data(keyword):
-    # 搜尋掃描紀錄
-    url_records = f'{BASE_URL}/scan_records?apikey={API_KEY}&limit=10&offset=0'
-    resp = requests.get(url_records)
-    
-    if resp.status_code != 200:
-        return None, f"API 連線失敗 (代碼:{resp.status_code})"
-    
-    records = resp.json().get('records', [])
-    if not records:
-        return None, "目前系統中無任何掃描紀錄"
+st.divider() # 分隔線
 
-    for record in records:
-        uid = record.get('user_id')
-        tid = record.get('tid')
-        tags = record.get('tag_list', [])
-
-        # 抓取用戶帳號比對
-        u_resp = requests.get(f'{BASE_URL}/users/{uid}?apikey={API_KEY}')
-        if u_resp.status_code == 200:
-            user_info = u_resp.json()
-            username = user_info.get('user', {}).get('username', '')
-
-            # 匹配關鍵字
-            if username.startswith(keyword):
-                # 抓 I Pose (胸圍/下圍)
-                data_I = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={API_KEY}&pose=I').json().get('measurement', {})
-                # 隔 1 秒避免卡頓
-                time.sleep(1)
-                # 抓 A Pose (乳尖)
-                data_A = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={API_KEY}&pose=A').json().get('measurement', {})
-
-                # 數據整理
-                upper = data_I.get('Chest Circumference', {}).get('value', 0)
-                under_obj = data_I.get('Under Bust Circumference', {})
-                lower = float(under_obj.get('front', 0)) + float(under_obj.get('back', 0))
-                
-                # 胸型識別
-                attr = "不確定胸型"
-                for t in tags:
-                    for k in ATTR_KEYWORDS:
-                        if k in t: attr = k
-                
-                return {
-                    "username": username,
-                    "name": user_info.get('real_name', username),
-                    "upper": upper,
-                    "lower": lower,
-                    "attr": attr,
-                    "nsp_l": data_A.get('NSP to Apex Length (Left)', {}).get('value', 0),
-                    "nsp_r": data_A.get('NSP to Apex Length (Right)', {}).get('value', 0)
-                }, None
-    
-    return None, f"找不到開頭為 '{keyword}' 的用戶紀錄"
-
-# --- 4. Streamlit 介面 ---
-st.title("👗 黛莉貝爾智能美體推薦")
-
-with st.sidebar:
-    st.header("🔍 數據同步")
-    search_input = st.text_input("輸入手機或帳號前綴", placeholder="26020865")
-    submit_btn = st.button("取得量身數據並推薦")
-
-if submit_btn:
-    if not search_input:
-        st.warning("請先輸入帳號關鍵字")
+# ==========================================
+# 3. 查詢邏輯與畫面呈現
+# ==========================================
+if search_clicked:
+    if not search_keyword.strip():
+        st.warning("⚠️ 請先輸入關鍵字！")
     else:
-        with st.spinner("🚀 正在跨雲端抓取 TG3D 數據，請稍候..."):
-            result, err = fetch_data(search_input)
-        
-        if err:
-            st.error(err)
-        else:
-            # 顯示結果
-            st.success(f"✅ 已對接用戶：{result['name']}")
+        with st.spinner(f"正在搜尋「{search_keyword}」的資料..."):
+            url_records = f'{BASE_URL}/scan_records?apikey={APIKEY}&limit=20&offset=0'
             
-            # 數據儀表板
-            m1, m2, m3 = st.columns(3)
-            m1.metric("胸上圍 (I Pose)", f"{result['upper']} cm")
-            m2.metric("胸下圍 (加總)", f"{round(result['lower'], 1)} cm")
-            m3.info(f"識別標籤：{result['attr']}")
+            try:
+                resp_records = requests.get(url_records, timeout=10)
+                resp_records.raise_for_status()
+                records = resp_records.json().get('records', [])
+                found_target = False
 
-            # 尺寸推薦邏輯
-            st.divider()
-            st.subheader("🎯 智能尺寸方案")
-            
-            # 計算罩杯差
-            cup_diff = result['upper'] - result['lower']
-            
-            # 從 CSV 篩選對應下圍區間
-            if df_size is not None:
-                match_size = df_size[(df_size['下圍下限'] <= result['lower']) & (df_size['下圍上限'] >= result['lower'])]
-                if not match_size.empty:
-                    st.write(f"根據下圍 {round(result['lower'],1)}，建議底圍尺寸為：**{match_size.iloc[0]['對應尺寸群組']}**")
-                else:
-                    st.warning("下圍數值超出對照表範圍，建議人工覆核。")
+                for record in records:
+                    user_id = record.get('user_id')
+                    tid = record.get('tid')
+                    original_tags = record.get('tag_list', [])
 
-            # 產品篩選
-            if df_product is not None:
-                st.subheader(f"✨ 針對「{result['attr']}」推薦款式")
-                products = df_product[df_product['胸型屬性'].str.contains(result['attr'])]
-                if not products.empty:
-                    for idx, p_row in products.head(3).iterrows():
-                        st.write(f"🔹 {p_row['商品名稱']} (代碼: {p_row['款式代號']})")
-                else:
-                    st.write("目前無特定屬性款式，推薦黛莉貝爾經典機能款。")
+                    if not user_id: continue
 
-            with st.expander("詳細量身參數"):
-                st.json(result)
+                    # 取得用戶詳細資料
+                    url_user = f'{BASE_URL}/users/{user_id}?apikey={APIKEY}'
+                    resp_user = requests.get(url_user, timeout=10)
+                    
+                    if resp_user.status_code == 200:
+                        user_data = resp_user.json()
+                        user_obj = user_data.get('user', {})
+                        username = user_obj.get('username', '')
+
+                        # 關鍵字比對
+                        if username and str(search_keyword) in str(username):
+                            found_target = True
+                            
+                            real_name = user_data.get('real_name', '無資料')
+                            nickname = user_obj.get('nick_name') or user_data.get('nickname') or '無資料'
+
+                            # --- 顯示個人資訊區塊 ---
+                            st.subheader("👤 用戶基本資訊")
+                            info_col1, info_col2 = st.columns(2)
+                            info_col1.markdown(f"**真實姓名:** {real_name}")
+                            info_col2.markdown(f"**暱稱:** {nickname}")
+
+                            # 處理並顯示標籤
+                            cleaned_tags = [t for t in original_tags if t not in SHAPE_TAGS]
+                            final_tags = cleaned_tags + ["(I-Pose Shape)"]
+                            st.markdown(f"**📌 整合標籤:** `{', '.join(final_tags)}`")
+                            
+                            st.divider()
+
+                            # --- 抓取量測數據 ---
+                            measurements = {}
+                            for pose in ['I', 'A']:
+                                url_pose = f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose={pose}'
+                                try:
+                                    m_resp = requests.get(url_pose, timeout=10).json()
+                                    measurements[pose] = m_resp.get('measurement', {})
+                                except Exception:
+                                    measurements[pose] = {}
+                                time.sleep(0.5)
+
+                            # --- 顯示量測數據 (使用 Metric 排版) ---
+                            st.subheader("📏 量測數據結果")
+                            
+                            st.markdown("#### 👕 I-Pose 數據")
+                            i_col1, i_col2 = st.columns(2)
+                            i_col1.metric("胸圍", get_val(measurements['I'], 'Chest Circumference'))
+                            i_col2.metric("胸下圍", get_val(measurements['I'], 'F Under Bust Circumference B'))
+
+                            st.markdown("#### 🧍 A-Pose 數據")
+                            a_col1, a_col2, a_col3 = st.columns(3)
+                            a_col1.metric("左乳尖長", get_val(measurements['A'], 'NSP to Apex Length (Left)'))
+                            a_col2.metric("右乳尖長", get_val(measurements['A'], 'NSP to Apex Length (Right)'))
+                            a_col3.metric("頸肩點寬", get_val(measurements['A'], 'Neck Shoulder Points Width'))
+
+                            a_col4, a_col5 = st.columns(2)
+                            a_col4.metric("腰圍", get_val(measurements['A'], 'Narrow Waist Circumference'))
+                            a_col5.metric("臀圍", get_val(measurements['A'], 'Low Hip Circumference'))
+
+                            st.success("✅ 資料讀取完成！")
+                            break # 找到目標後停止搜尋
+
+                if not found_target:
+                    st.error(f"❌ 找不到關鍵字「{search_keyword}」的紀錄。請確認帳號是否正確，或該帳號是否在最新的 20 筆紀錄中。")
+
+            except Exception as e:
+                st.error(f"❌ 連線或解析時發生錯誤: {e}")
