@@ -82,7 +82,7 @@ if search_clicked:
                             # 處理並顯示標籤
                             cleaned_tags = [t for t in original_tags if t not in SHAPE_TAGS]
                             final_tags = cleaned_tags + ["(I-Pose Shape)"]
-                            st.markdown(f"**📌 整合標籤:** `{', '.join(final_tags)}`")
+                            st.markdown(f"**📌 標籤:** `{', '.join(final_tags)}`")
                             
                             st.divider()
 
