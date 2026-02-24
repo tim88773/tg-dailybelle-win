@@ -26,19 +26,32 @@ APIKEY = st.secrets.get("APIKEY", "請在secrets設定APIKEY")
 BASE_URL = 'https://api.tg3ds.com/api/v1'
 
 # --- 2. 核心功能函數 ---
+
 @st.cache_data
 def load_csv_data(file_name):
+    """強化除錯版的 CSV 讀取功能"""
+    # 1. 檢查檔案是否真的存在於目前執行的路徑中
     if not os.path.exists(file_name):
+        current_path = os.path.abspath(os.getcwd())
+        st.error(f"📂 **路徑錯誤**：系統目前在資料夾「`{current_path}`」中找不到檔案 `{file_name}`。請確認終端機的執行路徑是否正確。")
         return None
+        
+    # 2. 嘗試使用不同編碼讀取
+    last_error = ""
     for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
         try:
             df = pd.read_csv(file_name, encoding=enc)
             if '對應尺寸群組' in df.columns:
                 df['對應尺寸群組'] = df['對應尺寸群組'].astype(str).str.replace('.', ',', regex=False)
             return df
-        except:
+        except Exception as e:
+            last_error = str(e)
             continue
+            
+    # 3. 如果檔案存在，但全部編碼都讀取失敗
+    st.error(f"⚠️ **格式錯誤**：讀取 `{file_name}` 失敗！檔案確實存在，但格式或編碼無法解析。\n\n**系統錯誤細節：** {last_error}")
     return None
+
 
 def close_sidebar():
     components.html(
@@ -178,12 +191,10 @@ with st.sidebar:
     st.divider()
 
     st.header("👤 顧客資訊")
-    # 將 value 綁定到 session_state，如果 API 有抓到資料就會自動顯示
     user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
     user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
 
     st.header("📏 數據測量")
-    # 將 value 綁定到 session_state，API 抓到數據就會直接改變這裡的值
     upper_chest = st.number_input("上胸圍 (cm)", 50.0, 150.0, float(st.session_state['f_upper']), 0.1)
     lower_chest = st.number_input("下胸圍 (cm)", 40.0, 120.0, float(st.session_state['f_lower']), 0.1)
     left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
@@ -201,6 +212,8 @@ with st.sidebar:
 st.title("𝒟𝒶𝒾𝓁𝓎𝒷𝑒𝓁𝓁𝑒 專業尺寸建議系統")
 
 SELECTED_FILE = "調整尺寸_2.58版.csv"
+
+# 依序讀取檔案（若失敗會顯示上方新增加的錯誤警告）
 size_table = load_csv_data(SELECTED_FILE)
 product_mapping = load_csv_data('商品對應尺寸表.csv')
 breast_attr = load_csv_data('胸型屬性.csv')
@@ -208,9 +221,8 @@ url_df = load_csv_data('款式官網連結.csv')
 
 url_dict = pd.Series(url_df.官網連結.values, index=url_df.款式號碼.astype(str)).to_dict() if url_df is not None else {}
 
-if size_table is None or product_mapping is None:
-    st.error(f"❌ 系統錯誤：找不到關鍵資料庫檔案 ({SELECTED_FILE})")
-else:
+# 若資料庫未完整讀取，不再重複報錯（由 load_csv_data 統一印出）
+if size_table is not None and product_mapping is not None:
     if btn_run:
         close_sidebar()
         calc_upper = upper_chest + 3.0 if (special_adjust and selected_attr == "成熟承托型") else upper_chest
