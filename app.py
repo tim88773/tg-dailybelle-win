@@ -131,4 +131,4 @@ if search_clicked:
                     st.error(f"❌ 找不到關鍵字「{search_keyword}」的紀錄。請確認帳號是否正確，或該帳號是否在最新的 20 筆紀錄中。")
 
             except Exception as e:
-                st.error(f"❌ 連線或解析時發生錯誤:
+                st.error(f"❌ 連線或解析時發生錯誤: {e}")
