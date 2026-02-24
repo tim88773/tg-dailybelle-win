@@ -21,21 +21,24 @@ if 'f_lower' not in st.session_state: st.session_state['f_lower'] = 65.0
 if 'f_lsn' not in st.session_state: st.session_state['f_lsn'] = 20.0
 if 'f_rsn' not in st.session_state: st.session_state['f_rsn'] = 20.0
 if 'f_tags' not in st.session_state: st.session_state['f_tags'] = []
-if 'run_report' not in st.session_state: st.session_state['run_report'] = False # 自動生成報告的開關
+if 'f_attr' not in st.session_state: st.session_state['f_attr'] = "不確定胸型" # 紀錄自動比對到的胸型
+if 'run_report' not in st.session_state: st.session_state['run_report'] = False
 
 # TG3D API 設定
 APIKEY = st.secrets.get("APIKEY", "請在secrets設定APIKEY")
 BASE_URL = 'https://api.tg3ds.com/api/v1'
+
+# 身形標籤過濾清單與胸型對應清單
 SHAPE_TAGS = {'Rectangle', 'Inverted Triangle', 'Triangle', 'Hourglass', 'Top Hourglass', 'Oval'}
+ATTR_OPTIONS = ["不確定胸型", "秀氣勻稱型", "自然美感型", "成熟承托型", "氣質柔順型", "渾圓美胸型", "柔潤水滴型"]
 
 # --- 2. 核心功能函數 ---
 
 @st.cache_data
 def load_csv_data(file_name):
-    """強化除錯版的 CSV 讀取功能"""
     if not os.path.exists(file_name):
         current_path = os.path.abspath(os.getcwd())
-        st.error(f"📂 **路徑錯誤**：系統目前在資料夾「`{current_path}`」中找不到檔案 `{file_name}`。請確認終端機的執行路徑是否正確。")
+        st.error(f"📂 **路徑錯誤**：系統目前在資料夾「`{current_path}`」中找不到檔案 `{file_name}`。請確認執行路徑是否正確。")
         return None
         
     last_error = ""
@@ -128,7 +131,6 @@ st.markdown("""
     [data-testid="stExpander"] details summary:hover { background-color: #fff5f5 !important; }
     [data-testid="stExpander"] details div { background-color: #ffffff !important; color: #211919 !important; }
     [data-testid="stExpander"] p, [data-testid="stExpander"] span { color: #211919 !important; }
-    .custom-tag { background-color: #211919; color: #ffffff !important; padding: 5px 12px; border-radius: 15px; font-size: 16px; margin-right: 8px; display: inline-block; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -177,6 +179,13 @@ with st.sidebar:
                                 cleaned_tags = [t for t in original_tags if t not in SHAPE_TAGS]
                                 final_tags = cleaned_tags + ["(I-Pose Shape)"]
                                 
+                                # ⭐ 自動比對胸型屬性
+                                matched_attr = "不確定胸型"
+                                for tag in original_tags:
+                                    if tag in ATTR_OPTIONS:
+                                        matched_attr = tag
+                                        break
+                                
                                 # 更新到 Session State
                                 st.session_state['f_name'] = nickname
                                 st.session_state['f_upper'] = get_tg3d_float(m_i, 'Chest Circumference', 82.0)
@@ -184,8 +193,8 @@ with st.sidebar:
                                 st.session_state['f_lsn'] = get_tg3d_float(m_a, 'NSP to Apex Length (Left)', 20.0)
                                 st.session_state['f_rsn'] = get_tg3d_float(m_a, 'NSP to Apex Length (Right)', 20.0)
                                 st.session_state['f_tags'] = final_tags
+                                st.session_state['f_attr'] = matched_attr # 寫入比對到的胸型
                                 
-                                # ⭐ 自動觸發生成報告！
                                 st.session_state['run_report'] = True 
                                 break
                     if not found:
@@ -208,10 +217,10 @@ with st.sidebar:
     special_adjust = st.toggle("🛠️ 開啟特殊調整", help="選取「成熟承托型」時，上胸圍自動 +3cm 計算")
     
     st.header("🔎 胸型屬性")
-    attr_options = ["不確定胸型", "秀氣勻稱型", "自然美感型", "成熟承托型", "氣質柔順型", "渾圓美胸型", "柔潤水滴型"]
-    selected_attr = st.selectbox("選擇顧客胸型", options=attr_options)
+    # 讀取 Session 裡面的胸型，設定為預設選項
+    default_attr_index = ATTR_OPTIONS.index(st.session_state['f_attr']) if st.session_state['f_attr'] in ATTR_OPTIONS else 0
+    selected_attr = st.selectbox("選擇顧客胸型", options=ATTR_OPTIONS, index=default_attr_index)
     
-    # 手動點擊也會觸發生成報告
     if st.button("✨ 手動生成報告", use_container_width=True):
         st.session_state['run_report'] = True
 
@@ -229,7 +238,6 @@ url_df = load_csv_data('款式官網連結.csv')
 url_dict = pd.Series(url_df.官網連結.values, index=url_df.款式號碼.astype(str)).to_dict() if url_df is not None else {}
 
 if size_table is not None and product_mapping is not None:
-    # 判斷是否需要執行報告 (點擊手動按鈕，或雲端匯入成功時都會是 True)
     if st.session_state.get('run_report', False):
         close_sidebar()
         calc_upper = upper_chest + 3.0 if (special_adjust and selected_attr == "成熟承托型") else upper_chest
@@ -242,10 +250,10 @@ if size_table is not None and product_mapping is not None:
         if not matches.empty:
             st.success(f"✅ 計算完成！根據上胸圍 **{upper_chest}** cm / 下胸圍 **{lower_chest}** cm 為您推薦以下尺寸：")
             
-            # ⭐ 新增：將標籤美化並顯示在推薦尺寸的正上方
+            # ⭐ 標籤改回黑底純文字格式，並使用逗號分隔
             if st.session_state['f_tags']:
-                tags_html = "".join([f"<span class='custom-tag'>{tag}</span>" for tag in st.session_state['f_tags']])
-                st.markdown(f"### 📌 雲端判定身形：<br>{tags_html}", unsafe_allow_html=True)
+                tags_text = "、".join(st.session_state['f_tags'])
+                st.markdown(f"#### 📌 雲端判定標籤： **{tags_text}**")
                 st.write("") # 空行排版
             
             email_body = f"【黛莉貝爾建議報表】\n"
@@ -284,4 +292,4 @@ if size_table is not None and product_mapping is not None:
             st.warning("⚠️ 查無匹配數據，請嘗試手動微調測量值。")
 
 st.markdown("---")
-st.caption("© 黛莉貝爾 Daily Belle - 專業美體系統 V5.1 (自動運算版)")
+st.caption("© 黛莉貝爾 Daily Belle - 專業美體系統 V5.2 (自動胸型帶入版)")
