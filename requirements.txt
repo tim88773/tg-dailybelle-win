@@ -1,0 +1,9 @@
+streamlit
+groq
+PyPDF2
+PyMuPDF
+pdf2image
+streamlit
+pandas
+gspread
+google-auth
