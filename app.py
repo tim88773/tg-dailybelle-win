@@ -77,7 +77,6 @@ if search_clicked:
                             # --- 顯示個人資訊區塊 ---
                             st.subheader("👤 用戶基本資訊")
                             info_col1, info_col2 = st.columns(2)
-                            info_col1.markdown(f"**真實姓名:** {real_name}")
                             info_col2.markdown(f"**暱稱:** {nickname}")
 
                             # 處理並顯示標籤
