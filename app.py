@@ -163,23 +163,37 @@ with st.sidebar:
         if not search_keyword.strip():
             st.warning("請先輸入關鍵字！")
         else:
-            with st.spinner("正在連接雲端撈取資料並分析..."):
-                url_records = f'{BASE_URL}/scan_records?apikey={APIKEY}&limit=20&offset=0'
-                try:
-                    resp_records = requests.get(url_records, timeout=10)
-                    resp_records.raise_for_status()
-                    records = resp_records.json().get('records', [])
-                    found = False
+            # ⭐ 替換為深度加速搜尋邏輯
+            with st.spinner("正在進行深度搜尋與資料撈取... (最多搜尋近期 300 筆)"):
+                found = False
+                checked_users = {} # 加速秘訣：快取已查詢過的 user_id
 
-                    for record in records:
-                        user_id = record.get('user_id')
-                        tid = record.get('tid')
-                        original_tags = record.get('tag_list', [])
-                        if not user_id: continue
+                for offset in [0, 100, 200]:
+                    if found: break # 若已找到，提早結束翻頁
+                    
+                    url_records = f'{BASE_URL}/scan_records?apikey={APIKEY}&limit=100&offset={offset}'
+                    try:
+                        resp_records = requests.get(url_records, timeout=10)
+                        if resp_records.status_code != 200:
+                            continue 
+                            
+                        records = resp_records.json().get('records', [])
+                        
+                        for record in records:
+                            user_id = record.get('user_id')
+                            tid = record.get('tid')
+                            original_tags = record.get('tag_list', [])
+                            if not user_id: continue
 
-                        resp_user = requests.get(f'{BASE_URL}/users/{user_id}?apikey={APIKEY}', timeout=10)
-                        if resp_user.status_code == 200:
-                            user_data = resp_user.json()
+                            # 核心邏輯：先看快取有沒有，沒有才去打 API
+                            if user_id not in checked_users:
+                                resp_user = requests.get(f'{BASE_URL}/users/{user_id}?apikey={APIKEY}', timeout=10)
+                                if resp_user.status_code == 200:
+                                    checked_users[user_id] = resp_user.json()
+                                else:
+                                    continue
+                            
+                            user_data = checked_users[user_id]
                             username = user_data.get('user', {}).get('username', '')
 
                             if username and str(search_keyword) in str(username):
@@ -219,11 +233,14 @@ with st.sidebar:
                                 st.session_state['f_attr'] = matched_attr 
                                 
                                 st.session_state['run_report'] = True 
-                                break
-                    if not found:
-                        st.error("❌ 找不到此帳號的近期紀錄。")
-                except Exception as e:
-                    st.error(f"連線失敗: {e}")
+                                break # 找到後跳出 for record 迴圈
+                                
+                    except Exception as e:
+                        st.error(f"搜尋過程中發生連線問題: {e}")
+                        break # 發生網路錯誤時停止翻頁
+                        
+                if not found:
+                    st.error("❌ 已搜尋近期 300 筆紀錄，仍找不到此帳號。")
 
     st.divider()
 
@@ -310,7 +327,6 @@ if size_table is not None and product_mapping is not None:
                     st.image(icon_url, use_container_width=True)
                     try:
                         img_content = requests.get(icon_url).content
-                        # 這裡的下載按鈕會自動套用我們上面寫的 CSS (透明底黑字)
                         st.download_button(
                             label="💾 下載正面圖",
                             data=img_content,
