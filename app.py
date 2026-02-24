@@ -23,6 +23,7 @@ if 'f_rsn' not in st.session_state: st.session_state['f_rsn'] = 20.0
 if 'f_tags' not in st.session_state: st.session_state['f_tags'] = []
 if 'f_attr' not in st.session_state: st.session_state['f_attr'] = "不確定胸型" # 紀錄自動比對到的胸型
 if 'run_report' not in st.session_state: st.session_state['run_report'] = False
+if 'f_icon_url' not in st.session_state: st.session_state['f_icon_url'] = "" # ⭐ 新增：紀錄圖片網址
 
 # TG3D API 設定
 APIKEY = st.secrets.get("APIKEY", "請在secrets設定APIKEY")
@@ -174,12 +175,19 @@ with st.sidebar:
                                 m_i = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=I', timeout=10).json().get('measurement', {})
                                 time.sleep(0.5)
                                 m_a = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=A', timeout=10).json().get('measurement', {})
+                                
+                                # ⭐ 新增：抓取詳細紀錄取得圖片 (icon_url)
+                                try:
+                                    record_detail = requests.get(f'{BASE_URL}/scan_records/{tid}?apikey={APIKEY}', timeout=10).json()
+                                    st.session_state['f_icon_url'] = record_detail.get('icon_url', '')
+                                except:
+                                    st.session_state['f_icon_url'] = ''
 
                                 # 處理標籤
                                 cleaned_tags = [t for t in original_tags if t not in SHAPE_TAGS]
                                 final_tags = cleaned_tags + ["(I-Pose Shape)"]
                                 
-                                # ⭐ 自動比對胸型屬性
+                                # 自動比對胸型屬性
                                 matched_attr = "不確定胸型"
                                 for tag in original_tags:
                                     if tag in ATTR_OPTIONS:
@@ -202,8 +210,12 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"連線失敗: {e}")
 
-    st.divider()
+st.divider()
 
+# --- 🎯 介面排版：左側輸入區(3)，右側圖片區(1) ---
+col_input, col_img = st.columns([3, 1])
+
+with col_input:
     st.header("👤 顧客資訊")
     user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
     user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
@@ -221,6 +233,26 @@ with st.sidebar:
     
     if st.button("✨ 手動生成報告", use_container_width=True):
         st.session_state['run_report'] = True
+
+with col_img:
+    st.header("🖼️ 體態預覽")
+    icon_url = st.session_state.get('f_icon_url', '')
+    if icon_url:
+        st.image(icon_url, use_container_width=True)
+        try:
+            # 製作下載圖片按鈕
+            img_content = requests.get(icon_url).content
+            st.download_button(
+                label="💾 下載正面圖",
+                data=img_content,
+                file_name=f"{st.session_state['f_name'] or 'customer'}_front.jpg",
+                mime="image/jpeg",
+                use_container_width=True
+            )
+        except:
+            st.caption("暫時無法提供下載")
+    else:
+        st.info("ℹ️ 尚未載入數據或無圖片")
 
 # --- 5. 主要運算邏輯 ---
 st.title("𝒟𝒶𝒾𝓁𝓎𝒷𝑒𝓁𝓁𝑒 專業尺寸建議系統")
