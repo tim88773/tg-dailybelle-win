@@ -135,7 +135,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 側邊欄設定 ---
+# --- 4. 側邊欄設定 (所有的輸入都在這裡) ---
 with st.sidebar:
     logo_path = 'logo.png' 
     if os.path.exists(logo_path):
@@ -201,7 +201,7 @@ with st.sidebar:
                                 st.session_state['f_lsn'] = get_tg3d_float(m_a, 'NSP to Apex Length (Left)', 20.0)
                                 st.session_state['f_rsn'] = get_tg3d_float(m_a, 'NSP to Apex Length (Right)', 20.0)
                                 st.session_state['f_tags'] = final_tags
-                                st.session_state['f_attr'] = matched_attr # 寫入比對到的胸型
+                                st.session_state['f_attr'] = matched_attr 
                                 
                                 st.session_state['run_report'] = True 
                                 break
@@ -210,27 +210,27 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"連線失敗: {e}")
 
-st.divider()
+    st.divider()
 
-# --- 回復成原本滿版的輸入排版 ---
-st.header("👤 顧客資訊")
-user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
-user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
+    # --- 以下皆移回左側邊欄 ---
+    st.header("👤 顧客資訊")
+    user_name = st.text_input("姓名", value=st.session_state['f_name'], placeholder="請輸入姓名 (選填)") 
+    user_email = st.text_input("📧 接收 Email", placeholder="example@mail.com (選填)")
 
-st.header("📏 數據測量")
-upper_chest = st.number_input("上胸圍 (cm)", 50.0, 150.0, float(st.session_state['f_upper']), 0.1)
-lower_chest = st.number_input("下胸圍 (cm)", 40.0, 120.0, float(st.session_state['f_lower']), 0.1)
-left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
-right_shoulder_nipple = st.number_input("頸肩-乳尖公分數(右) (cm)", 10.0, 50.0, float(st.session_state['f_rsn']), 0.1)
+    st.header("📏 數據測量")
+    upper_chest = st.number_input("上胸圍 (cm)", 50.0, 150.0, float(st.session_state['f_upper']), 0.1)
+    lower_chest = st.number_input("下胸圍 (cm)", 40.0, 120.0, float(st.session_state['f_lower']), 0.1)
+    left_shoulder_nipple = st.number_input("頸肩-乳尖公分數(左) (cm)", 10.0, 50.0, float(st.session_state['f_lsn']), 0.1)
+    right_shoulder_nipple = st.number_input("頸肩-乳尖公分數(右) (cm)", 10.0, 50.0, float(st.session_state['f_rsn']), 0.1)
 
-st.header("🔎 胸型屬性")
-default_attr_index = ATTR_OPTIONS.index(st.session_state['f_attr']) if st.session_state['f_attr'] in ATTR_OPTIONS else 0
-selected_attr = st.selectbox("選擇顧客胸型", options=ATTR_OPTIONS, index=default_attr_index)
+    st.header("🔎 胸型屬性")
+    default_attr_index = ATTR_OPTIONS.index(st.session_state['f_attr']) if st.session_state['f_attr'] in ATTR_OPTIONS else 0
+    selected_attr = st.selectbox("選擇顧客胸型", options=ATTR_OPTIONS, index=default_attr_index)
 
-if st.button("✨ 手動生成報告", use_container_width=True):
-    st.session_state['run_report'] = True
+    if st.button("✨ 手動生成報告", use_container_width=True):
+        st.session_state['run_report'] = True
 
-# --- 5. 主要運算邏輯 ---
+# --- 5. 主要運算邏輯 (主畫面顯示區) ---
 st.title("𝒟𝒶𝒾𝓁𝓎𝒷𝑒𝓁𝓁𝑒 專業尺寸建議系統")
 
 SELECTED_FILE = "調整尺寸_2.58版.csv"
@@ -286,12 +286,12 @@ if size_table is not None and product_mapping is not None:
                             display_text = f"[**{p}**]({url})" if url else f"**{p}**"
                             cols[idx % 4].markdown(f"{display_text}\n\n尺寸：{size_label}")
             
-            # ⭐ 將體態圖放到最後一個推薦款式下方
+            # ⭐ 體態圖放置於主畫面最下方 (最後一個推薦款式之後)
             st.markdown("---")
             st.subheader("🖼️ 顧客體態預覽")
             icon_url = st.session_state.get('f_icon_url', '')
             if icon_url:
-                # 使用 1:2 的比例，讓圖片維持在適當的大小，不會因為滿版被放大到失真
+                # 依然使用 1:2 比例，避免主畫面全寬時圖片被拉太大
                 img_col, _ = st.columns([1, 2])
                 with img_col:
                     st.image(icon_url, use_container_width=True)
