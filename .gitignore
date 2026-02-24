@@ -1,0 +1,17 @@
+# 忽略 Streamlit 的機密設定檔 (絕對不能上傳這個！)
+.streamlit/secrets.toml
+
+# 忽略 Python 的虛擬環境資料夾 (如果有的話)
+venv/
+env/
+.env/
+.venv/
+
+# 忽略 Python 執行時產生的暫存檔
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 忽略 macOS 系統自動產生的隱藏檔
+.DS_Store
