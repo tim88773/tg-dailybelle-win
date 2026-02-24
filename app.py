@@ -10,6 +10,7 @@ import streamlit.components.v1 as components
 import gspread 
 from google.oauth2.service_account import Credentials 
 from datetime import datetime 
+import concurrent.futures  # ⭐ 新增：強大的多執行緒加速模組
 
 # --- 1. 初始化設定 ---
 st.set_page_config(page_title="黛莉貝爾智能美體系統", layout="wide")
@@ -102,9 +103,10 @@ def save_log_to_gsheets(name, email, upper, lower, left_sn, right_sn, attr, reco
             upper, lower, left_sn, right_sn, attr, recommended_info
         ]
         worksheet.append_row(row_data)
-        st.success("📊 數據已成功寫入雲端紀錄！")
+        return True
     except Exception as e:
         st.error(f"⚠️ 寫入 Google Sheets 失敗： {e}")
+        return False
 
 def get_tg3d_float(data, key, default_val):
     if not data: return default_val
@@ -124,11 +126,9 @@ st.markdown("""
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #000000 !important; font-weight: bold; }
     h1, h2, h3 { color: #211919 !important; font-family: "Microsoft JhengHei", sans-serif !important; }
     
-    /* 側邊欄一般按鈕樣式 (粉色底白字) */
     .stButton>button { background-color: #d6a4a4 !important; color: #ffffff !important; border-radius: 20px !important; border: none !important; }
     .stButton>button:hover { background-color: #c58e8e !important; color: white !important; }
     
-    /* ⭐ 專屬針對「下載按鈕」的樣式 (透明底黑字黑框) */
     [data-testid="stDownloadButton"] button {
         background-color: transparent !important; 
         color: #000000 !important; 
@@ -163,67 +163,77 @@ with st.sidebar:
         if not search_keyword.strip():
             st.warning("請先輸入關鍵字！")
         else:
-            # ⭐ 替換為深度加速搜尋邏輯
-            with st.spinner("正在進行深度搜尋與資料撈取... (最多搜尋近期 300 筆)"):
+            with st.spinner("🚀 啟動多執行緒加速搜尋中... (可瞬間比對近期 500 筆紀錄)"):
                 found = False
-                checked_users = {} # 加速秘訣：快取已查詢過的 user_id
+                checked_users = {} 
+                my_bar = st.progress(0, text="準備連線至 TG3D 雲端...")
 
-                for offset in [0, 100, 200]:
-                    if found: break # 若已找到，提早結束翻頁
-                    
+                # ⭐ 擴大搜尋到前 500 筆，因為速度已經提上來了！
+                for offset in [0, 100, 200, 300, 400]:
+                    if found: break 
                     url_records = f'{BASE_URL}/scan_records?apikey={APIKEY}&limit=100&offset={offset}'
                     try:
                         resp_records = requests.get(url_records, timeout=10)
-                        if resp_records.status_code != 200:
-                            continue 
-                            
+                        if resp_records.status_code != 200: continue 
                         records = resp_records.json().get('records', [])
                         
+                        my_bar.progress((offset + 50) / 500, text=f"⚡ 正在批次掃描第 {offset} ~ {offset+100} 筆...")
+
+                        # 1. 抓出這 100 筆裡面「還沒查過」的獨立用戶 ID
+                        unique_uids = list(set([r.get('user_id') for r in records if r.get('user_id') and r.get('user_id') not in checked_users]))
+
+                        # 2. 定義單兵查詢動作
+                        def fetch_user_info(uid):
+                            try:
+                                res = requests.get(f'{BASE_URL}/users/{uid}?apikey={APIKEY}', timeout=5)
+                                if res.status_code == 200:
+                                    return uid, res.json()
+                            except:
+                                pass
+                            return uid, None
+
+                        # 3. ⭐ 多執行緒併發處理 (同時派 20 個人出去問，速度提升 20 倍！)
+                        if unique_uids:
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                                results = executor.map(fetch_user_info, unique_uids)
+                                for uid, data in results:
+                                    if data:
+                                        checked_users[uid] = data
+
+                        # 4. 快取已建立，瞬間秒速比對帳號
                         for record in records:
                             user_id = record.get('user_id')
-                            tid = record.get('tid')
-                            original_tags = record.get('tag_list', [])
-                            if not user_id: continue
-
-                            # 核心邏輯：先看快取有沒有，沒有才去打 API
-                            if user_id not in checked_users:
-                                resp_user = requests.get(f'{BASE_URL}/users/{user_id}?apikey={APIKEY}', timeout=10)
-                                if resp_user.status_code == 200:
-                                    checked_users[user_id] = resp_user.json()
-                                else:
-                                    continue
+                            if not user_id or user_id not in checked_users: continue
                             
                             user_data = checked_users[user_id]
                             username = user_data.get('user', {}).get('username', '')
 
                             if username and str(search_keyword) in str(username):
                                 found = True
-                                nickname = user_data.get('user', {}).get('nick_name') or user_data.get('nickname') or ''
+                                my_bar.progress(100, text="✅ 命中目標！正在下載體態圖與精確數值...")
                                 
-                                # 抓取數據
+                                tid = record.get('tid')
+                                nickname = user_data.get('user', {}).get('nick_name') or user_data.get('nickname') or ''
+                                original_tags = record.get('tag_list', [])
+                                
                                 m_i = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=I', timeout=10).json().get('measurement', {})
-                                time.sleep(0.5)
                                 m_a = requests.get(f'{BASE_URL}/scan_records/{tid}/size_xt?apikey={APIKEY}&pose=A', timeout=10).json().get('measurement', {})
                                 
-                                # 抓取詳細紀錄取得圖片 (icon_url)
                                 try:
                                     record_detail = requests.get(f'{BASE_URL}/scan_records/{tid}?apikey={APIKEY}', timeout=10).json()
                                     st.session_state['f_icon_url'] = record_detail.get('icon_url', '')
                                 except:
                                     st.session_state['f_icon_url'] = ''
 
-                                # 處理標籤
                                 cleaned_tags = [t for t in original_tags if t not in SHAPE_TAGS]
                                 final_tags = cleaned_tags + ["(I-Pose Shape)"]
                                 
-                                # 自動比對胸型屬性
                                 matched_attr = "不確定胸型"
                                 for tag in original_tags:
                                     if tag in ATTR_OPTIONS:
                                         matched_attr = tag
                                         break
                                 
-                                # 更新到 Session State
                                 st.session_state['f_name'] = nickname
                                 st.session_state['f_upper'] = get_tg3d_float(m_i, 'Chest Circumference', 82.0)
                                 st.session_state['f_lower'] = get_tg3d_float(m_i, 'F Under Bust Circumference B', 65.0)
@@ -233,14 +243,15 @@ with st.sidebar:
                                 st.session_state['f_attr'] = matched_attr 
                                 
                                 st.session_state['run_report'] = True 
-                                break # 找到後跳出 for record 迴圈
+                                break # 找到目標，脫離迴圈
                                 
                     except Exception as e:
                         st.error(f"搜尋過程中發生連線問題: {e}")
-                        break # 發生網路錯誤時停止翻頁
+                        break 
                         
                 if not found:
-                    st.error("❌ 已搜尋近期 300 筆紀錄，仍找不到此帳號。")
+                    my_bar.empty()
+                    st.error("❌ 已高速搜尋近期 500 筆紀錄，仍查無此帳號。請確認帳號是否正確。")
 
     st.divider()
 
@@ -317,7 +328,7 @@ if size_table is not None and product_mapping is not None:
                             display_text = f"[**{p}**]({url})" if url else f"**{p}**"
                             cols[idx % 4].markdown(f"{display_text}\n\n尺寸：{size_label}")
             
-            # ⭐ 體態圖與下載按鈕
+            # 體態圖與下載按鈕
             st.markdown("---")
             st.subheader("🖼️ 顧客體態預覽")
             icon_url = st.session_state.get('f_icon_url', '')
@@ -339,14 +350,22 @@ if size_table is not None and product_mapping is not None:
             else:
                 st.info("ℹ️ 尚未載入數據或無圖片")
 
-            save_log_to_gsheets(user_name, user_email, upper_chest, lower_chest, left_shoulder_nipple, right_shoulder_nipple, selected_attr, log_recommend_str)
+            # 終極防護：把儲存與 Email 動作包裝在按鈕裡
+            st.markdown("---")
+            st.subheader("📤 結帳與後續服務")
+            
+            if st.button("💾 確認推薦並儲存至雲端 (若有填寫Email則一併寄出)", type="primary"):
+                save_status = save_log_to_gsheets(user_name, user_email, upper_chest, lower_chest, left_shoulder_nipple, right_shoulder_nipple, selected_attr, log_recommend_str)
+                
+                if user_email and save_status:
+                    with st.spinner('正在為您生成並寄送報告中...'):
+                        if send_email(user_email, email_body):
+                            st.success(f"🎉 報告已成功寄送至 {user_email}！")
+                elif not user_email and save_status:
+                    st.success("✅ 紀錄已成功儲存至雲端。 (因未填寫 Email，故未寄送報告)")
 
-            if user_email:
-                with st.spinner('正在為您生成並寄送報告中...'):
-                    if send_email(user_email, email_body):
-                        st.toast(f"報告已成功寄送至 {user_email}")
         else:
             st.warning("⚠️ 查無匹配數據，請嘗試手動微調測量值。")
 
 st.markdown("---")
-st.caption("© 黛莉貝爾 Daily Belle - 專業美體系統 V5.2 (自動胸型帶入版)")
+st.caption("© 黛莉貝爾 Daily Belle - 專業美體系統 V5.2 (高速快取版)")
