@@ -100,12 +100,12 @@ if search_clicked:
                             # --- 顯示量測數據 (使用 Metric 排版) ---
                             st.subheader("📏 量測數據結果")
                             
-                            st.markdown("#### 👕 I-Pose 數據")
+                            
                             i_col1, i_col2 = st.columns(2)
                             i_col1.metric("胸圍", get_val(measurements['I'], 'Chest Circumference'))
                             i_col2.metric("胸下圍", get_val(measurements['I'], 'F Under Bust Circumference B'))
 
-                            st.markdown("#### 🧍 A-Pose 數據")
+                            
                             a_col1, a_col2, a_col3 = st.columns(3)
                             a_col1.metric("左乳尖長", get_val(measurements['A'], 'NSP to Apex Length (Left)'))
                             a_col2.metric("右乳尖長", get_val(measurements['A'], 'NSP to Apex Length (Right)'))
